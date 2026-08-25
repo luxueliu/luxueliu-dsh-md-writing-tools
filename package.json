@@ -1,0 +1,25 @@
+{
+  "name": "luxueliu-dsh-md-writing-tools",
+  "version": "0.1.0",
+  "description": "🖊️ DSH Markdown 写作工具：为 dsh-better-sidebar 的 CodeMirror 编辑器注入 Word 级格式化快捷键（加粗/斜体/删除线/行内代码/标题逐级/格式刷/链接）。host 侧幂等注入，升级被覆盖后一键装回自动重打。",
+  "main": "lib/index.js",
+  "type": "module",
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "check": "node --check lib/index.js && node --check lib/inject.js"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "dsh-better-sidebar",
+    "markdown",
+    "code-mirror",
+    "写作",
+    "快捷键"
+  ],
+  "license": "MIT",
+  "dependencies": {}
+}

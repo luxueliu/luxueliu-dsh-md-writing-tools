@@ -1,0 +1,180 @@
+/* dsh-md-writing-tools:injected */
+const mdwtMarkerIsPresent = (core, marker) => {
+  if (!core) return false;
+  if (marker === '*') {
+    const leading = (core.match(/^\*+/) || [''])[0].length;
+    const trailing = (core.match(/\*+$/) || [''])[0].length;
+    return leading % 2 === 1 && trailing % 2 === 1;
+  }
+  return core.length >= marker.length * 2 && core.startsWith(marker) && core.endsWith(marker);
+};
+const mdwtSegmentParts = (segment) => {
+  const match = segment.match(/^(\s*)(.*?)(\s*)$/s);
+  return { leading: match[1], core: match[2], trailing: match[3] };
+};
+const mdwtIsTableDelimiter = (core) => /^:?-{3,}:?$/.test(core);
+const mdwtLineSegments = (line) => {
+  const trimmed = line.trim();
+  if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+    return line.split('|').slice(1, -1).map(mdwtSegmentParts).filter((part) => part.core && !mdwtIsTableDelimiter(part.core));
+  }
+  const match = line.match(/^(\s*(?:(?:>\s*)+)?(?:(?:#{1,6}\s+)|(?:(?:[-+*]|\d+[.)])\s+(?:\[[ xX]\]\s+)?))?)(.*)$/);
+  const part = mdwtSegmentParts(match ? match[2] : line);
+  return part.core ? [part] : [];
+};
+const mdwtTransformSegment = (segment, marker, remove) => {
+  const part = mdwtSegmentParts(segment);
+  if (!part.core || mdwtIsTableDelimiter(part.core)) return segment;
+  const present = mdwtMarkerIsPresent(part.core, marker);
+  let core = part.core;
+  if (remove && present) core = core.slice(marker.length, -marker.length);
+  else if (!remove && !present) core = marker + core + marker;
+  return part.leading + core + part.trailing;
+};
+const mdwtTransformLine = (line, marker, remove) => {
+  const trimmed = line.trim();
+  if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+    const cells = line.split('|');
+    for (let index = 1; index < cells.length - 1; index += 1) cells[index] = mdwtTransformSegment(cells[index], marker, remove);
+    return cells.join('|');
+  }
+  const match = line.match(/^(\s*(?:(?:>\s*)+)?(?:(?:#{1,6}\s+)|(?:(?:[-+*]|\d+[.)])\s+(?:\[[ xX]\]\s+)?))?)(.*)$/);
+  if (!match) return mdwtTransformSegment(line, marker, remove);
+  return match[1] + mdwtTransformSegment(match[2], marker, remove);
+};
+const mdwtTransformInlineSelection = (text, marker) => {
+  const newline = text.includes('\r\n') ? '\r\n' : '\n';
+  const lines = text.split(/\r?\n/);
+  const targets = lines.flatMap(mdwtLineSegments);
+  if (targets.length === 0) return text;
+  const remove = targets.every((part) => mdwtMarkerIsPresent(part.core, marker));
+  return lines.map((line) => mdwtTransformLine(line, marker, remove)).join(newline);
+};
+const mdwtChangeHeading = (line, delta) => {
+  const match = line.match(/^(\s*(?:(?:>\s*)+)?)(.*)$/);
+  const prefix = match ? match[1] : '';
+  const body = match ? match[2] : line;
+  const heading = body.match(/^(#{1,6})\s+(.*)$/);
+  if (!heading) return delta > 0 && body.trim() ? prefix + '# ' + body : line;
+  const level = heading[1].length;
+  if (delta > 0) return level < 6 ? prefix + '#'.repeat(level + 1) + ' ' + heading[2] : line;
+  return level === 1 ? prefix + heading[2] : prefix + '#'.repeat(level - 1) + ' ' + heading[2];
+};
+const mdwtSetHeadingLevel = (line, level) => {
+  const match = line.match(/^(\s*(?:(?:>\s*)+)?)(.*)$/);
+  const prefix = match ? match[1] : '';
+  const body = (match ? match[2] : line).replace(/^#{1,6}\s+/, '');
+  if (level === 0) return prefix + body;
+  return body.trim() ? prefix + '#'.repeat(level) + ' ' + body : line;
+};
+const mdwtDetectOuterMarkers = (text) => {
+  let core = text.trim();
+  const markers = [];
+  let changed = true;
+  while (changed && core) {
+    changed = false;
+    for (const marker of ['~~', '**', '__', '*', '_', '`']) {
+      if (mdwtMarkerIsPresent(core, marker)) { markers.push(marker); core = core.slice(marker.length, -marker.length); changed = true; break; }
+    }
+  }
+  return { markers, core };
+};
+const mdwtApplyMarkers = (text, markers) => {
+  let result = text;
+  for (let index = markers.length - 1; index >= 0; index -= 1) result = mdwtTransformInlineSelection(result, markers[index]);
+  return result;
+};
+const mdwtToggleMark = (open, close, placeholder) => (view) => {
+  const { state } = view;
+  const { from, to } = state.selection.main;
+  const selected = state.sliceDoc(from, to);
+  const text = selected || placeholder;
+  const insert = open + text + (close || open);
+  view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + open.length, head: from + open.length + text.length } });
+  return true;
+};
+const mdwtSelectedLineNumbers = (view) => {
+  const lines = new Set();
+  const sel = view.state.selection.main;
+  const startLine = view.state.doc.lineAt(sel.from).number;
+  const endLine = view.state.doc.lineAt(sel.to).number;
+  for (let line = startLine; line <= endLine; line += 1) lines.add(line);
+  return [...lines].sort((a, b) => a - b);
+};
+const mdwtEditSelectedLines = (view, transform) => {
+  const changes = [];
+  for (const lineNumber of mdwtSelectedLineNumbers(view)) {
+    const line = view.state.doc.line(lineNumber);
+    const replacement = transform(line.text);
+    if (replacement !== line.text) changes.push({ from: line.from, to: line.to, insert: replacement });
+  }
+  if (changes.length) view.dispatch({ changes });
+  return true;
+};
+const mdwtHeadingDelta = (delta) => (view) => mdwtEditSelectedLines(view, (line) => mdwtChangeHeading(line, delta));
+const mdwtSetHeading = (level) => (view) => mdwtEditSelectedLines(view, (line) => mdwtSetHeadingLevel(line, level));
+const mdwtSurroundingMarkers = (view, selection) => {
+  if (selection.empty) return [];
+  const lineFrom = view.state.doc.lineAt(selection.from);
+  const lineTo = view.state.doc.lineAt(selection.to);
+  if (lineFrom.number !== lineTo.number) return [];
+  const before = lineFrom.text.slice(0, selection.from - lineFrom.from);
+  const after = lineFrom.text.slice(selection.to - lineFrom.from);
+  const found = [];
+  let left = before; let right = after;
+  for (const marker of ['~~', '**', '__', '*', '_', '`']) {
+    if (left.endsWith(marker) && right.startsWith(marker)) { found.push(marker); left = left.slice(0, -marker.length); right = right.slice(marker.length); }
+  }
+  return found;
+};
+let mdwtPaintedFormat = null;
+const mdwtCaptureFormat = (view) => {
+  const selection = view.state.selection.main;
+  const selected = selection.empty ? '' : view.state.sliceDoc(selection.from, selection.to);
+  const detected = mdwtDetectOuterMarkers(selected);
+  const markers = detected.markers.length > 0 ? detected.markers : mdwtSurroundingMarkers(view, selection);
+  const lineText = view.state.doc.lineAt(selection.active).text;
+  const heading = lineText.match(/^\s*(?:>\s*)*(#{1,6})\s+/);
+  return { markers, headingLevel: heading ? heading[1].length : null };
+};
+const mdwtApplyFormat = (view) => {
+  if (!mdwtPaintedFormat) return false;
+  const style = mdwtPaintedFormat;
+  mdwtPaintedFormat = null;
+  if (style.headingLevel !== null) mdwtEditSelectedLines(view, (line) => mdwtSetHeadingLevel(line, style.headingLevel));
+  if (style.markers.length > 0) {
+    const { from, to } = view.state.selection.main;
+    const text = view.state.sliceDoc(from, to);
+    view.dispatch({ changes: { from, to, insert: mdwtApplyMarkers(text, style.markers) } });
+  }
+  return true;
+};
+const mdwtFormatPainter = (view) => {
+  if (mdwtPaintedFormat) return mdwtApplyFormat(view);
+  const captured = mdwtCaptureFormat(view);
+  if (captured.markers.length === 0 && captured.headingLevel === null) return false;
+  mdwtPaintedFormat = captured;
+  return true;
+};
+const mdwtCancelFormat = () => { mdwtPaintedFormat = null; return true; };
+const mdwtInsertLink = (view) => {
+  const { state } = view;
+  const { from, to } = state.selection.main;
+  const text = state.sliceDoc(from, to) || '链接文字';
+  const insert = '[' + text + '](url)';
+  const urlStart = from + text.length + 3;
+  view.dispatch({ changes: { from, to, insert }, selection: { anchor: urlStart, head: urlStart + 3 } });
+  return true;
+};
+const mdwtKeymap = [
+  { key: 'Mod-b', run: mdwtToggleMark('**', '**', '加粗') },
+  { key: 'Mod-/', run: mdwtToggleMark('*', '*', '斜体') },
+  { key: 'Mod--', run: mdwtToggleMark('~~', '~~', '删除线') },
+  { key: 'Mod-`', run: mdwtToggleMark('`', '`', '代码') },
+  { key: 'Mod-Alt-ArrowLeft', run: mdwtHeadingDelta(1) },
+  { key: 'Mod-Alt-ArrowRight', run: mdwtHeadingDelta(-1) },
+  { key: 'Mod-k', run: mdwtInsertLink },
+  { key: 'Mod-Alt-c', run: mdwtFormatPainter },
+  { key: 'Mod-Alt-v', run: mdwtApplyFormat },
+  { key: 'Escape', run: mdwtCancelFormat }
+];
