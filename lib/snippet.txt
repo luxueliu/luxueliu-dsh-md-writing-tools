@@ -89,7 +89,8 @@ const mdwtToggleMark = (open, close, placeholder) => (view) => {
   const { from, to } = state.selection.main;
   const selected = state.sliceDoc(from, to);
   const text = selected || placeholder;
-  const insert = open + text + (close || open);
+  // 智能切换：用行感知转换（重复按键=取消格式，多行/表格/列表项保留前缀）
+  const insert = mdwtTransformInlineSelection(text, open);
   view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + open.length, head: from + open.length + text.length } });
   return true;
 };
