@@ -87,6 +87,15 @@ node --check lib/index.js && node --check lib/inject.js   # 语法检查
 node lib/index.js                                         # 手动触发一次注入
 ```
 
+## Roadmap / 已知限制
+
+- **本地 MD 双击默认用 dsh 侧边栏打开**：已调研，当前**无现成通道**——
+  - DSH web 核心无 URL 深链参数（`?open=`/`?path=` 均不支持）；
+  - `dsh-better-sidebar` 的 `/sidebar/api` 无 `open` 方法（只有 fs/git/sidechat 等）；
+  - `sidebar_open` 背后的推送通道（`AgentOpenRegistry`）是 better-sidebar **内部对象，不对外暴露**。
+  - 要落地需上游支持（DSH/better-sidebar 加深链或 open HTTP 端点）或本地补丁（重装即丢，不推荐）。
+  - 当前替代：聊天里文件链接点击（`interceptOpenPath` 默认开）→ 侧边栏编辑器打开，走的是同一套渲染。
+
 ## License
 
 MIT
