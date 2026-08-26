@@ -8,7 +8,8 @@
     "lib"
   ],
   "scripts": {
-    "check": "node --check lib/index.js && node --check lib/inject.js"
+    "check": "node --check lib/index.js && node --check lib/inject.js",
+    "test": "node lib/test-transforms.mjs"
   },
   "keywords": [
     "deepseek-harness",
