@@ -1,6 +1,6 @@
-# 🖊️ dsh-md-writing-tools
+# 给 DSH 侧边栏装上 Word 手感
 
-> 给 `dsh-better-sidebar` 的 CodeMirror 编辑器装上 **Word 级 Markdown 写作快捷键**。
+> **dsh-md-writing-tools** — 给 `dsh-better-sidebar` 的 CodeMirror 编辑器装上 **Word 级 Markdown 写作快捷键**：加粗、斜体、标题、格式刷，一次配齐。
 > host 侧幂等注入，`dsh-better-sidebar` 升级被覆盖后**一键装回即自动重打**。
 
 [![dsh-plugin](https://img.shields.io/badge/dsh-plugin-%2300b4ff)](https://github.com/topics/dsh-plugin)
